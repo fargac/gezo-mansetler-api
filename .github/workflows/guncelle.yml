@@ -5,7 +5,8 @@ on:
     # Türkiye saatiyle (UTC+3) sabah 07:15, 08:15 ve 09:15'te çalışır.
     - cron: '15 4,5,6 * * *'
   workflow_dispatch: # İstersen GitHub arayüzünden manuel tetiklemek için
-
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 jobs:
   scrape:
     runs-on: ubuntu-latest
