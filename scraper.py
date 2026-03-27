@@ -60,12 +60,12 @@ def fetch_mansetler_paralel():
     
     # max_workers=20 ile 20 farklı işçiyi aynı anda sahaya sürüyoruz
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
-        # Bütün gazeteleri işçilere dağıt
-        gelecek_uydular = [executor.submit(tek_gazete_cek, g) for g in GAZETELER]
+        # DÜZELTME BURADA: as_completed yerine map() kullanıyoruz.
+        # map() fonksiyonu, sonuçları tam olarak GAZETELER listesindeki sırayla (alfabetik) döndürür.
+        # En hızlı biteni değil, sıradakini bekler.
+        sonuclar_iterator = executor.map(tek_gazete_cek, GAZETELER)
         
-        # Hangi işçi işini bitirirse sonucunu listeye ekle
-        for future in concurrent.futures.as_completed(gelecek_uydular):
-            data = future.result()
+        for data in sonuclar_iterator:
             if data is not None:
                 sonuclar.append(data)
 
@@ -73,7 +73,7 @@ def fetch_mansetler_paralel():
     with open("mansetler.json", "w", encoding="utf-8") as f:
         json.dump(sonuclar, f, ensure_ascii=False, indent=4)
         
-    print(f"\nİşlem tamam! Toplam {len(sonuclar)} gazete ışık hızında kaydedildi.")
+    print(f"\nİşlem tamam! Toplam {len(sonuclar)} gazete ışık hızında ve ALFABETİK kaydedildi.")
 
 if __name__ == "__main__":
     fetch_mansetler_paralel()
