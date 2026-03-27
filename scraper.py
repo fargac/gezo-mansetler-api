@@ -2,8 +2,8 @@ import json
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
+import concurrent.futures # Paralel işlem kütüphanesi
 
-# Uygulamanın tam gazete listesi (slug değerleri Haber7 URL yapısına göre ayarlandı)
 GAZETELER = [
     {"id": "manset_hurriyet", "name": "Hürriyet", "slug": "hurriyet", "link": "https://www.hurriyet.com.tr"},
     {"id": "manset_sabah", "name": "Sabah", "slug": "sabah", "link": "https://www.sabah.com.tr"},
@@ -31,42 +31,49 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
 
-def fetch_mansetler():
-    sonuclar = []
-    print(f"[{datetime.now()}] Manşetler çekiliyor...")
-    
-    for gazete in GAZETELER:
-        url = f"https://www.haber7.com/gazete-mansetleri/{gazete['slug']}"
-        try:
-            # timeout'u 10 saniye veriyoruz ki bir site takılırsa scraper tamamen durmasın
-            response = requests.get(url, headers=HEADERS, timeout=10)
-            soup = BeautifulSoup(response.content, "html.parser")
-            
-            # Sayfadaki büyük resmi buluyoruz
-            img_tag = soup.find("img", class_="big")
-            
-            if img_tag and img_tag.has_attr("src"):
-                guncel_resim_url = img_tag["src"]
-                
-                # React Native tarafındaki useMansetler.ts yapısına uyması için objeyi hazırlıyoruz
-                sonuclar.append({
-                    "id": gazete["id"],
-                    "name": gazete["name"],
-                    "todayUrl": guncel_resim_url,
-                    "webAdresi": gazete["link"]
-                })
-                print(f"Başarılı: {gazete['name']}")
-            else:
-                print(f"Bulunamadı: {gazete['name']} (Sayfa yapısı değişmiş veya resim yok)")
-                
-        except Exception as e:
-            print(f"Hata ({gazete['name']}): {e}")
+# Tek bir gazeteyi çeken bağımsız fonksiyon (İşçilerin yapacağı görev)
+def tek_gazete_cek(gazete):
+    url = f"https://www.haber7.com/gazete-mansetleri/{gazete['slug']}"
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=10)
+        soup = BeautifulSoup(response.content, "html.parser")
+        img_tag = soup.find("img", class_="big")
+        
+        if img_tag and img_tag.has_attr("src"):
+            print(f"Başarılı: {gazete['name']}")
+            return {
+                "id": gazete["id"],
+                "name": gazete["name"],
+                "todayUrl": img_tag["src"],
+                "webAdresi": gazete["link"]
+            }
+        else:
+            print(f"Bulunamadı: {gazete['name']}")
+            return None
+    except Exception as e:
+        print(f"Hata ({gazete['name']}): {e}")
+        return None
 
-    # Sonuçları JSON dosyasına kaydet
+def fetch_mansetler_paralel():
+    sonuclar = []
+    print(f"[{datetime.now()}] Manşetler PARALEL olarak çekiliyor...")
+    
+    # max_workers=20 ile 20 farklı işçiyi aynı anda sahaya sürüyoruz
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+        # Bütün gazeteleri işçilere dağıt
+        gelecek_uydular = [executor.submit(tek_gazete_cek, g) for g in GAZETELER]
+        
+        # Hangi işçi işini bitirirse sonucunu listeye ekle
+        for future in concurrent.futures.as_completed(gelecek_uydular):
+            data = future.result()
+            if data is not None:
+                sonuclar.append(data)
+
+    # İşlemler bitince JSON dosyasına kaydet
     with open("mansetler.json", "w", encoding="utf-8") as f:
         json.dump(sonuclar, f, ensure_ascii=False, indent=4)
         
-    print(f"\nİşlem tamam! Toplam {len(sonuclar)}/{len(GAZETELER)} gazete mansetler.json dosyasına kaydedildi.")
+    print(f"\nİşlem tamam! Toplam {len(sonuclar)} gazete ışık hızında kaydedildi.")
 
 if __name__ == "__main__":
-    fetch_mansetler()
+    fetch_mansetler_paralel()
