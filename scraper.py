@@ -1,6 +1,8 @@
 import json
 import requests
 from bs4 import BeautifulSoup
+from datetime import datetime
+import concurrent.futures # Paralel işlem kütüphanesi
 
 GAZETELER = [
     {"id": "manset_hurriyet", "name": "Hürriyet", "slug": "hurriyet", "link": "https://www.hurriyet.com.tr"},
@@ -25,43 +27,53 @@ GAZETELER = [
     {"id": "manset_fotomac", "name": "Fotomaç", "slug": "fotomac", "link": "https://www.fotomac.com.tr"}
 ]
 
-HEADERS = {"User-Agent": "Mozilla/5.0"}
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+}
 
-def akilli_cek():
-    print("Sadece 1 gazeteye gidip günün şifresi aranıyor...")
-    
-    # 1. Sadece Hürriyet'in (veya herhangi birinin) sayfasına git
-    url = "https://www.haber7.com/gazete-mansetleri/hurriyet"
-    res = requests.get(url, headers=HEADERS, timeout=10)
-    soup = BeautifulSoup(res.content, "html.parser")
-    img_tag = soup.find("img", class_="big")
-    
-    if img_tag and img_tag.has_attr("src"):
-        ornek_src = img_tag["src"]
+# Tek bir gazeteyi çeken bağımsız fonksiyon (İşçilerin yapacağı görev)
+def tek_gazete_cek(gazete):
+    url = f"https://www.haber7.com/gazete-mansetleri/{gazete['slug']}"
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=10)
+        soup = BeautifulSoup(response.content, "html.parser")
+        img_tag = soup.find("img", class_="big")
         
-        # 2. Linkin en sonundaki "big_270326_0630.jpg?v=270326_0630" kısmını kesip al
-        # Örnek url: https://i13.haber7.net/haber7/gazete/hurriyet/big_270326_0630.jpg?v=270326_0630
-        günün_sifresi = ornek_src.split("/")[-1] 
-        print(f"Günün Şifresi Bulundu: {günün_sifresi}")
-        
-        # 3. Şifreyi tüm gazetelere kopyala yapıştır!
-        sonuclar = []
-        for gazete in GAZETELER:
-            guncel_url = f"https://i13.haber7.net/haber7/gazete/{gazete['slug']}/{günün_sifresi}"
-            sonuclar.append({
+        if img_tag and img_tag.has_attr("src"):
+            print(f"Başarılı: {gazete['name']}")
+            return {
                 "id": gazete["id"],
                 "name": gazete["name"],
-                "todayUrl": guncel_url,
+                "todayUrl": img_tag["src"],
                 "webAdresi": gazete["link"]
-            })
-            
-        # 4. JSON'ı Kaydet
-        with open("mansetler.json", "w", encoding="utf-8") as f:
-            json.dump(sonuclar, f, ensure_ascii=False, indent=4)
-            
-        print("İşlem ışık hızında tamamlandı!")
-    else:
-        print("Hata: Örnek gazete resmi bulunamadı!")
+            }
+        else:
+            print(f"Bulunamadı: {gazete['name']}")
+            return None
+    except Exception as e:
+        print(f"Hata ({gazete['name']}): {e}")
+        return None
+
+def fetch_mansetler_paralel():
+    sonuclar = []
+    print(f"[{datetime.now()}] Manşetler PARALEL olarak çekiliyor...")
+    
+    # max_workers=20 ile 20 farklı işçiyi aynı anda sahaya sürüyoruz
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+        # Bütün gazeteleri işçilere dağıt
+        gelecek_uydular = [executor.submit(tek_gazete_cek, g) for g in GAZETELER]
+        
+        # Hangi işçi işini bitirirse sonucunu listeye ekle
+        for future in concurrent.futures.as_completed(gelecek_uydular):
+            data = future.result()
+            if data is not None:
+                sonuclar.append(data)
+
+    # İşlemler bitince JSON dosyasına kaydet
+    with open("mansetler.json", "w", encoding="utf-8") as f:
+        json.dump(sonuclar, f, ensure_ascii=False, indent=4)
+        
+    print(f"\nİşlem tamam! Toplam {len(sonuclar)} gazete ışık hızında kaydedildi.")
 
 if __name__ == "__main__":
-    akilli_cek()
+    fetch_mansetler_paralel()
