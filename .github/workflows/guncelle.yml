@@ -24,7 +24,7 @@ jobs:
 
       - name: Kütüphaneleri Yükle
         # Eğer depoya requirements.txt eklersen bunu pip install -r requirements.txt yapabilirsin
-        run: pip install requests beautifulsoup4
+        run: pip install -r requirements.txt
 
       - name: Python Scriptini Çalıştır
         run: python scraper.py # || exit 1 kaldırıldı, zaten default davranış
